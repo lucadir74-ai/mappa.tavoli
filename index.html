@@ -142,7 +142,13 @@ const ls = {
 let cfg = ls.get(K_CFG) || {url:SUPABASE_URL, key:SUPABASE_KEY};
 if(SUPABASE_URL && SUPABASE_KEY) cfg = {url:SUPABASE_URL, key:SUPABASE_KEY};
 
-let tables = (ls.get(K_CACHE) || TAVOLI.map(t=>({...t, s:0})));
+const memoria = new Map((ls.get(K_CACHE)||[]).map(t=>[t.id,t]));
+let tables = TAVOLI.map(t=>{
+  const m = memoria.get(t.id);
+  memoria.delete(t.id);
+  return m ? {...t, s:m.s, x:m.x??t.x, y:m.y??t.y, agg:m.agg} : {...t, s:0};
+});
+tables = tables.concat([...memoria.values()]);   // tavoli aggiunti a mano
 tables.forEach(t=>{ if(scaduto(t.agg)) t.s = 0; });
 let queue  = ls.get(K_QUEUE) || [];
 let editing=false, adding=false, sel=null, zoom=1, online=false;
@@ -207,6 +213,8 @@ async function pull(){
       if(t){ t.s = st; t.agg = row.aggiornato; if(row.x!=null) t.x=row.x; if(row.y!=null) t.y=row.y; }
       else tables.push({id:row.codice, x:row.x??50, y:row.y??50, s:st, agg:row.aggiornato});
     });
+    const noti = new Set(rows.map(r=>r.codice));
+    tables.forEach(t=>{ if(!noti.has(t.id)) enqueue({codice:t.id, stato:t.s, x:t.x, y:t.y}); });
     ls.set(K_CACHE, tables);
     online = true; draw();
     stato("aggiornato " + new Date().toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"}));
